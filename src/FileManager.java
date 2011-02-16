@@ -4,6 +4,7 @@ import fileSystem.utils.Buffer;
 import fileSystem.utils.UserInterface;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.util.Vector;
 
@@ -26,6 +27,7 @@ public class FileManager extends AbstractFileManager{
     
     //Memoria intermedia que se utilizar� para acceder a los bloques de los ficheros.
     private Buffer buffer=null;
+    FileChannel fc=null;
     
     public FileManager() {
         
@@ -40,13 +42,28 @@ public class FileManager extends AbstractFileManager{
     * @return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */    
     public String openFileSystem(String fileName) {
+    	//Open file
     	try {
-			buffer.openFile(fileName, "rw");
+			fc = buffer.openFile(fileName, "rw");
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IllegalArgumentException e) {
 			e.printStackTrace();
 		}
+		//See whether the file is empty or not
+		try {
+			if(buffer.acquireBlock(fc,0) != null){
+				System.out.println("File is not empty.");
+				// Define data file???
+			}
+			else{
+				System.out.println("File is empty.");
+				// Define data file
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
         return "Method 'FileManager.openFileSystem("+fileName+")' correctly executed";
     }
 
@@ -55,7 +72,7 @@ public class FileManager extends AbstractFileManager{
     *@return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */
     public String closeFileSystem() {      
-    	//buffer.close();
+    	buffer.close(fc);
         return "Method 'FileManager.closeFileSystem()' not implemented";
     }
 
@@ -75,15 +92,13 @@ public class FileManager extends AbstractFileManager{
     * @param fileName Nombre completo del archivo desde el que se importa
     */
     public String importFile(String fileName) {
-    	//First step: opening the file
-    	try {
-			FileChannel fc=buffer.openFile(fileName, "rw");
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IllegalArgumentException e) {
-			e.printStackTrace();
-		}
-		//fc.
+    	//Loop until Title = #### is found
+		//Read Registry
+		//Change to new design
+		//Save
+    	//Close old file
+    	
+    	
         return "Method 'FileManager.importFile("+fileName+")' not implemented";
     }
 
