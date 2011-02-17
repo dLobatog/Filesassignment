@@ -64,7 +64,7 @@ public class FileManager extends AbstractFileManager{
 			e.printStackTrace();
 		}
 		
-        return "Method 'FileManager.openFileSystem("+fileName+")' correctly executed";
+        return "Method 'FileManager.openFileSystem("+fileName+")' not implemented";
     }
 
     /**
@@ -72,6 +72,8 @@ public class FileManager extends AbstractFileManager{
     *@return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */
     public String closeFileSystem() {      
+    	//Set the policy to release all the pages in the block to intermediate memory.
+    	buffer.releasePagePolicy(fc, buffer.getNumberOfPages());
     	buffer.close(fc);
         return "Method 'FileManager.closeFileSystem()' not implemented";
     }
@@ -97,7 +99,14 @@ public class FileManager extends AbstractFileManager{
 		//Change to new design
 		//Save
     	//Close old file
-    	
+    	for(int i=0;i<buffer.getNumberOfPages();i++){
+    		try {
+				buffer.acquireBlock(fc, i);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+    		// Add conditions to change it to the new design
+    	}
     	
         return "Method 'FileManager.importFile("+fileName+")' not implemented";
     }
