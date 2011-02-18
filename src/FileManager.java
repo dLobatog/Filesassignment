@@ -5,6 +5,7 @@ import fileSystem.utils.UserInterface;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Vector;
 
@@ -28,7 +29,31 @@ public class FileManager extends AbstractFileManager{
     //Memoria intermedia que se utilizar� para acceder a los bloques de los ficheros.
     private Buffer buffer=null;
     FileChannel fc=null;
-    
+    ByteBuffer block = null;
+    // Length and existence marks
+    byte titleLength, nationalityLength, voLength, topicLength, topicExist,
+    nameLength, surnameLength, nicknameLength, nicknameExist;
+    // Arrays where the fields will be saved according to the physical logical design. 
+    byte [] title=new byte[titleLength]; 
+    byte [] nationality=new byte[nationalityLength];
+    byte [] vo=new byte[voLength];
+    byte year;
+    { // Define variables if they exist
+    	if (topicExist == 1){
+    		// Topic may be designed as a linked list or as a bidimensional array
+    		byte [] topic = new byte[topicLength];
+    	}
+    }
+    byte length;
+    byte takings;
+    {	
+    	if(nicknameExist==1){
+    		byte [][][] director = new byte [nameLength][surnameLength][nicknameLength];
+    	}
+    	else{
+    		byte [][] director = new byte [nameLength][surnameLength];
+    	}
+    }
     public FileManager() {
         
         //Construye una memoria intermedia con pol�tica de liberaci�n aleatoria de 16 p�ginas de 1024 bytes.
@@ -42,28 +67,36 @@ public class FileManager extends AbstractFileManager{
     * @return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */    
     public String openFileSystem(String fileName) {
-    	//Open file
+    	//Open file fileName with all permissions allowed and get first block
     	try {
 			fc = buffer.openFile(fileName, "rw");
+			block=buffer.acquireBlock(fc,0);
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IllegalArgumentException e) {
 			e.printStackTrace();
-		}
-		//See whether the file is empty or not
-		try {
-			if(buffer.acquireBlock(fc,0) != null){
-				System.out.println("File is not empty.");
-				// Define data file???
-			}
-			else{
-				System.out.println("File is empty.");
-				// Define data file
-			}
-		} catch (IOException e) {
+		} catch (IOException e){
 			e.printStackTrace();
 		}
 		
+		//Determine whether the file contains any data or not
+		if(block != null){
+			System.out.println("File is not empty.");
+			// Define data file???
+			// Position the pointer at the beggining of the block
+			block.clear();
+			// Print buffer status
+			buffer.print();
+		}
+		else{
+			System.out.println("File is empty.");
+			// Define data file
+			//Position the pointer at the beggining of the block
+			block.clear();
+			// Print buffer status
+			buffer.print();
+		}
+
         return "Method 'FileManager.openFileSystem("+fileName+")' not implemented";
     }
 
@@ -148,6 +181,10 @@ public class FileManager extends AbstractFileManager{
     * @return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */
     public String nextRecord(LogicalRecord outputRecord) {
+    	// Get field names
+    	 String[] FieldNames = outputRecord.getFieldNames();
+    	// Once field names are known load blocks on buffer until this fields are found
+    	// if this fields are found return the next record
          return "Method 'FileManager.nextRecord(LogicalRecord outputRecord)' not implemented";
     }
 
@@ -179,7 +216,6 @@ public class FileManager extends AbstractFileManager{
         
         /* Se lanza una nueva ventana principal con una nueva instancia de 
         GestorDeFicheros y una nueva instancia de Esquema*/
-        
         UserInterface.launch(new FileManager());
     } 
 }
