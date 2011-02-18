@@ -34,9 +34,9 @@ public class FileManager extends AbstractFileManager{
     byte titleLength, nationalityLength, voLength, topicLength, topicExist,
     nameLength, surnameLength, nicknameLength, nicknameExist;
     // Arrays where the fields will be saved according to the physical logical design. 
-    byte [] title=new byte[titleLength]; 
-    byte [] nationality=new byte[nationalityLength];
-    byte [] vo=new byte[voLength];
+    byte [] title = new byte[titleLength]; 
+    byte [] nationality = new byte[nationalityLength];
+    byte [] vo = new byte[voLength];
     byte year;
     { // Define variables if they exist
     	if (topicExist == 1){
@@ -116,7 +116,8 @@ public class FileManager extends AbstractFileManager{
     *@return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */  
     public String flush() {
-    	//buffer.save();
+    	//Save the buffer in the file
+    	buffer.save(fc);
         return "Method 'FileManager.flush()' not implemented";
     }
 
