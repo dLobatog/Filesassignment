@@ -31,29 +31,41 @@ public class FileManager extends AbstractFileManager{
     FileChannel fc=null;
     ByteBuffer block = null;
     // Length and existence marks
-    byte titleLength, nationalityLength, voLength, topicLength, topicExist,
+    byte titleLength, nationalityLength, voLength,
     nameLength, surnameLength, nicknameLength, nicknameExist;
-    // Arrays where the fields will be saved according to the physical logical design. 
+    // Arrays where the fields will be saved according to the physical logical design.
+    byte [] topicExist = new byte[16];
+    byte [] topicLength = new byte[16];
     byte [] title = new byte[titleLength]; 
     byte [] nationality = new byte[nationalityLength];
     byte [] vo = new byte[voLength];
-    byte year;
-    { // Define variables if they exist
-    	if (topicExist == 1){
-    		// Topic may be designed as a linked list or as a bidimensional array
-    		byte [] topic = new byte[topicLength];
-    	}
-    }
-    byte length;
-    byte takings;
-    {	
-    	if(nicknameExist==1){
-    		byte [][][] director = new byte [nameLength][surnameLength][nicknameLength];
-    	}
-    	else{
-    		byte [][] director = new byte [nameLength][surnameLength];
-    	}
-    }
+    byte [] year;
+    // Topic may be designed as a linked list or as a bidimensional array
+    byte [][] topic = new byte[16][];
+    // A short in java is 2 bytes so length could be of this type
+    short length;
+    // An int in java is 4 bytes so takings could be of this type
+    int takings;
+    byte [] directorName;
+    byte directorNameLength;
+    byte [] directorSurname;
+    byte directorSurnameLength;
+    byte [] directorNickname;
+    byte directorNicknameLength;
+    byte [] screenwriterName;
+    byte screenwriterNameLength;
+    byte [] screenwriterSurname;
+    byte screenwriterSurnameLength;
+    byte [] screenwriterNickname;
+    byte screenwriterNicknameLength;
+    byte [][] actorName = new byte [8][];
+    byte [] actorNameLength = new byte [8];
+    byte [][] actorSurname = new byte [8][];
+    byte [] actorSurnameLength = new byte [8];
+    byte [][] actorNickname = new byte [8][];
+    byte [] actorNicknameLength = new byte [8];
+    byte [] actorExist = new byte [8];
+    
     public FileManager() {
         
         //Construye una memoria intermedia con pol�tica de liberaci�n aleatoria de 16 p�ginas de 1024 bytes.
@@ -68,9 +80,13 @@ public class FileManager extends AbstractFileManager{
     */    
     public String openFileSystem(String fileName) {
     	//Open file fileName with all permissions allowed and get first block
+    	boolean haveData=false;
     	try {
 			fc = buffer.openFile(fileName, "rw");
 			block=buffer.acquireBlock(fc,0);
+			if (block != null){
+				haveData = true;
+			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IllegalArgumentException e) {
@@ -79,25 +95,12 @@ public class FileManager extends AbstractFileManager{
 			e.printStackTrace();
 		}
 		
-		//Determine whether the file contains any data or not
-		if(block != null){
-			System.out.println("File is not empty.");
-			// Define data file???
-			// Position the pointer at the beggining of the block
-			block.clear();
-			// Print buffer status
-			buffer.print();
+		if (haveData){
+			return "File system ("+fileName+")' is now open and it contains data";
 		}
 		else{
-			System.out.println("File is empty.");
-			// Define data file
-			//Position the pointer at the beggining of the block
-			block.clear();
-			// Print buffer status
-			buffer.print();
+			return "File system ("+fileName+") is now open and it does not contain data";
 		}
-
-        return "Method 'FileManager.openFileSystem("+fileName+")' not implemented";
     }
 
     /**
@@ -106,9 +109,14 @@ public class FileManager extends AbstractFileManager{
     */
     public String closeFileSystem() {      
     	//Set the policy to release all the pages in the block to intermediate memory.
-    	buffer.releasePagePolicy(fc, buffer.getNumberOfPages());
-    	buffer.close(fc);
-        return "Method 'FileManager.closeFileSystem()' not implemented";
+    	if (fc != null){
+    		buffer.releasePagePolicy(fc, buffer.getNumberOfPages());
+    		buffer.close(fc);
+    		return "File system is now closed";
+    	}
+    	else{
+    		return "Closing";
+    	}
     }
 
     /**
@@ -118,7 +126,7 @@ public class FileManager extends AbstractFileManager{
     public String flush() {
     	//Save the buffer in the file
     	buffer.save(fc);
-        return "Method 'FileManager.flush()' not implemented";
+        return "Files are saved";
     }
 
     /**
@@ -128,14 +136,176 @@ public class FileManager extends AbstractFileManager{
     * @param fileName Nombre completo del archivo desde el que se importa
     */
     public String importFile(String fileName) {
-    	//Loop until Title = #### is found
-		//Read Registry
-		//Change to new design
-		//Save
-    	//Close old file
+    	//Auxiliary array
+    	byte bytesOfString[];
+    	String stringField;
+    	ByteBuffer bb;
     	for(int i=0;i<buffer.getNumberOfPages();i++){
     		try {
-				buffer.acquireBlock(fc, i);
+				block = buffer.acquireBlock(fc, i);
+				block.clear();
+				//Get title and convert it to the new physical-logical design
+				bytesOfString = new byte[70];
+				for(int j = 0 ; j < 70 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				title = stringToByte(stringField);
+				titleLength = (byte) title.length;
+				/* only for debug purposes */ System.out.println(new String(title));
+				//Get nationality and convert it to the new physical logical design
+				bytesOfString = new byte[14];
+				for(int j = 0 ; j < 14 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				nationality = stringToByte(stringField);
+				nationalityLength = (byte) nationality.length;
+				/* only for debug purposes */ System.out.println(new String(nationality));
+				//Get vo and convert it to the new physical-logical design
+				bytesOfString = new byte[12];
+				for(int j = 0 ; j < 12 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				vo = stringToByte(stringField);
+				voLength = (byte) vo.length;
+				/* only for debug purposes */ System.out.println(new String(vo));
+				//Get year and convert it to the new physical-logical design (it is required to know the
+				//year of the first movie and the year of the last movie in the database)
+				bytesOfString = new byte[4];
+				for(int j = 0 ; j < 4 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				year = stringToByte(stringField);
+				/* only for debug purposes */ System.out.println(new String(year));
+				//Get the topics. In our design a mark of existence will be written before the set of fields.
+				//This mark will consist in a byte specifying how many topics there will be
+				bytesOfString = new byte[15];
+				for(int k = 0; k < 16; k++){
+					for(int j = 0 ; j < 15 ; j++){
+						bytesOfString[j] = block.get();
+					}
+					stringField = new String(bytesOfString);
+					topic[k] = stringToByte(stringField);
+					topicLength[k] = (byte) topic[k].length;
+					//This means that there exist a topic in position # k.
+					if(topicLength[k]!=0){
+						topicExist[k] = 1;
+					/* only for debug purposes */ System.out.println(new String(topic[k]));
+					}
+					else{
+						topicExist[k]=0;
+					}
+				}
+				//Get length of the movie and convert it to the new physical-logical design
+				bytesOfString = new byte[3];
+				for(int j = 0 ; j < 3 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				length = Short.parseShort(stringField);
+				/* only for debug purposes */ System.out.println(length);
+				//Get takings and convert it to the new physical-logical design 
+				bytesOfString = new byte[9];
+				for(int j = 0 ; j < 9 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				takings = Integer.parseInt(stringField);
+				/* only for debug purposes */ System.out.println(takings);
+				//Get director's name and convert it to the new physical-logical design
+				bytesOfString = new byte[35];
+				for(int j = 0 ; j < 35 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				directorName = stringToByte(stringField);
+				directorNameLength = (byte) directorName.length;
+				/* only for debug purposes */ System.out.println(new String(directorName));
+				//Get director's surname and convert it to the new physical-logical design
+				bytesOfString = new byte[15];
+				for(int j = 0 ; j < 15 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				directorSurname = stringToByte(stringField);
+				directorSurnameLength = (byte) directorSurname.length;
+				/* only for debug purposes */ System.out.println(new String(directorSurname));
+				//Get director's nickname and convert it to the new physical-logical design
+				bytesOfString = new byte[25];
+				for(int j = 0 ; j < 25 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				directorNickname = stringToByte(stringField);
+				directorNicknameLength = (byte) directorNickname.length;
+				/* only for debug purposes */ System.out.println(new String(directorNickname));
+				//Get screenwriters's name and convert it to the new physical-logical design
+				bytesOfString = new byte[35];
+				for(int j = 0 ; j < 35 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				screenwriterName = stringToByte(stringField);
+				screenwriterNameLength = (byte) screenwriterName.length;
+				/* only for debug purposes */ System.out.println(new String(screenwriterName));
+				//Get screenwriter's surname and convert it to the new physical-logical design
+				bytesOfString = new byte[15];
+				for(int j = 0 ; j < 15 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				screenwriterSurname = stringToByte(stringField);
+				screenwriterSurnameLength = (byte) screenwriterSurname.length;
+				/* only for debug purposes */ System.out.println(new String(screenwriterSurname));
+				//Get screenwriter's nickname and convert it to the new physical-logical design
+				bytesOfString = new byte[25];
+				for(int j = 0 ; j < 25 ; j++){
+					bytesOfString[j] = block.get();
+				}
+				stringField = new String(bytesOfString);
+				screenwriterNickname = stringToByte(stringField);
+				screenwriterNicknameLength = (byte) screenwriterNickname.length;
+				/* only for debug purposes */ System.out.println(new String(screenwriterNickname));
+				for(int k = 0 ; k < 8 ; k++){
+					//Get actors's name and convert it to the new physical-logical design
+					bytesOfString = new byte[35];
+					for(int j = 0 ; j < 35 ; j++){
+						bytesOfString[j] = block.get();
+					}
+					stringField = new String(bytesOfString);
+					actorName[k] = stringToByte(stringField);
+					actorNameLength[k] = (byte) actorName[k].length;
+					//Get actor's surname and convert it to the new physical-logical design
+					bytesOfString = new byte[15];
+					for(int j = 0 ; j < 15 ; j++){
+						bytesOfString[j] = block.get();
+					}
+					stringField = new String(bytesOfString);
+					actorSurname[k] = stringToByte(stringField);
+					actorSurnameLength[k] = (byte) actorSurname[k].length;
+					//Get actor's nickname and convert it to the new physical-logical design
+					bytesOfString = new byte[25];
+					for(int j = 0 ; j < 25 ; j++){
+						bytesOfString[j] = block.get();
+					}
+					stringField = new String(bytesOfString);
+					actorNickname[k] = stringToByte(stringField);
+					actorNicknameLength[k] = (byte) actorNickname[k].length;
+					//This means that there exist a topic in position # k.
+					if(actorNicknameLength[k]!=0){
+						actorExist[k] = 1;
+						/* only for debug purposes */ System.out.println(new String(actorName[k]));
+						/* only for debug purposes */ System.out.println(new String(actorSurname[k]));
+						/* only for debug purposes */ System.out.println(new String(actorNickname[k]));
+					}
+					else{
+						actorExist[k]=0;
+					}
+					
+				}
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -144,7 +314,22 @@ public class FileManager extends AbstractFileManager{
     	
         return "Method 'FileManager.importFile("+fileName+")' not implemented";
     }
+    
+    /**
+     * String to byte array. Removes spaces from the string
+     * 
+     * @param stringField , an standard string
+     * @return byte array
+     */
 
+    public byte[] stringToByte (String stringField){
+    	byte byteArray[];
+    	stringField = stringField.trim();
+    	byteArray = new byte[stringField.length()];
+    	byteArray = stringField.getBytes();
+		return byteArray;
+    }
+    
     /**
     * Busca los registros de un fileName concreto que cumplen unas determinadas condiciones especificadas en inputRecord y devuelve el primero de ellos en outputRecord.
     * 
