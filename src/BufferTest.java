@@ -25,17 +25,17 @@ public class BufferTest {
 		Buffer  buffer = new RABuffer(numberOfPages,blockSize); 
 		ByteBuffer block; // Referencia a un bloque de memoria (java.nio.ByteBuffer) 
 		FileChannel f0;    // Referencia a un fichero (java.nio.channel.FileChannel)
-                FileChannel f1;    // Referencia a otro fichero (java.nio.channel.FileChannel)
+        FileChannel f1;    // Referencia a otro fichero (java.nio.channel.FileChannel)
 		
 		String f0String0 = "f0 string 0";//Cadena de caracteres que se escribir� en el fichero f0 en el bloque 0
 		String f0String1 = "f0 string 1";//Cadena de caracteres que se escribir� en el fichero f0 en el bloque 1
-                String f0String2 = "f0 string 2";//Cadena de caracteres que se escribir� en el fichero f0 en el bloque 2
+        String f0String2 = "f0 string 2";//Cadena de caracteres que se escribir� en el fichero f0 en el bloque 2
                 
-                String f1String0 = "f1 string 0";//Cadena de caracteres que se escribir� en el fichero f1 en el bloque 0
+        String f1String0 = "f1 string 0";//Cadena de caracteres que se escribir� en el fichero f1 en el bloque 0
 		String f1String1 = "f1 string 1";//Cadena de caracteres que se escribir� en el fichero f1 en el bloque 1
-                String f1String2 = "f1 string 2";//Cadena de caracteres que se escribir� en el fichero f1 en el bloque 2
+        String f1String2 = "f1 string 2";//Cadena de caracteres que se escribir� en el fichero f1 en el bloque 2
                 
-                byte [] bytesOfString=new byte[11]; //Array que se utilizar� para recuperar en forma de bytes las cadenas de caracteres de los ficheros
+        byte [] bytesOfString=new byte[11]; //Array que se utilizar� para recuperar en forma de bytes las cadenas de caracteres de los ficheros
                 
 		try {
                         //Estado inicial de las p�ginas de la memoria intermedia

@@ -71,6 +71,7 @@ public class FileManager extends AbstractFileManager{
         
         //Construye una memoria intermedia con pol�tica de liberaci�n aleatoria de 16 p�ginas de 1024 bytes.
         buffer=new RABuffer(); 
+        
     }
 
     /**
@@ -142,7 +143,12 @@ public class FileManager extends AbstractFileManager{
     	String stringField;
     	FileChannel importfc = null;
     	ByteBuffer bb;
+    	boolean EOF = false;
+    	int eofCounter = 0;
     	int currentBlock = 0;
+    	int counter = 0;
+    	int usefulCounter = 0;
+    	int realCounter = 0;
         //Keep track of how many bytes are left in block
         int bytesRead=0;
 		try {
@@ -156,53 +162,105 @@ public class FileManager extends AbstractFileManager{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		for(int i=0;i<buffer.getNumberOfPages();i++){
+		while(!EOF){
 			try {
 				//Get title and convert it to the new physical-logical design
 				bytesOfString = new byte[70];
+				//block.get(bytesOfString) 
 				for(int j = 0 ; j < 70 ; j++){
 					bytesOfString[j] = block.get();
 					bytesRead++;
+					if(bytesOfString[j] == 35){
+						eofCounter ++;
+					}
+					if(bytesRead == 1024){
+							currentBlock++;
+							counter++;
+							bytesRead=0;
+							buffer.close(importfc);
+							importfc = buffer.openFile(fileName, "rw");
+							block = buffer.acquireBlock(importfc, currentBlock);
+							block.clear();
+							System.out.println(currentBlock + " file channel position (import fc): " + importfc.position());
+					}
 				}
 				stringField = new String(bytesOfString);
 				title = stringToByte(stringField);
 				titleLength = (byte) title.length;
-				if (new String(title).equals("####")){
+				if (eofCounter >= 4){
+					System.out.println("Useful bytes " + usefulCounter);
+					System.out.println("Nr of records " + counter);
 					System.out.println("EOF reached. Stopping..");
-					/* only for debug purposes */ System.out.println(new String(title));
-					i = buffer.getNumberOfPages();
+					EOF = true;
+					/* only for debug purposes */ System.out.println("####");
 				}
 				else{
+					counter++;
+					usefulCounter = usefulCounter + title.length;
+					realCounter = usefulCounter + 1;
 					//Get nationality and convert it to the new physical logical design
 					bytesOfString = new byte[14];
 					for(int j = 0 ; j < 14 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					nationality = stringToByte(stringField);
 					nationalityLength = (byte) nationality.length;
 					/* only for debug purposes */ System.out.println(new String(nationality));
+					usefulCounter = usefulCounter + nationality.length;
 					//Get vo and convert it to the new physical-logical design
 					bytesOfString = new byte[12];
 					for(int j = 0 ; j < 12 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					vo = stringToByte(stringField);
 					voLength = (byte) vo.length;
 					/* only for debug purposes */ System.out.println(new String(vo));
+					usefulCounter = usefulCounter + vo.length;
 					//Get year and convert it to the new physical-logical design (it is required to know the
 					//year of the first movie and the year of the last movie in the database)
 					bytesOfString = new byte[4];
 					for(int j = 0 ; j < 4 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					year = stringToByte(stringField);
 					/* only for debug purposes */ System.out.println(new String(year));
+					usefulCounter = usefulCounter + year.length;
 					//Get the topics. In our design a mark of existence will be written before the set of fields.
 					//This mark will consist in a byte specifying how many topics there will be
 					bytesOfString = new byte[15];
@@ -210,13 +268,25 @@ public class FileManager extends AbstractFileManager{
 						for(int j = 0 ; j < 15 ; j++){
 							bytesOfString[j] = block.get();
 							bytesRead++;
+							if(bytesRead == 1024){
+									currentBlock++;
+									counter++;
+									bytesRead=0;
+									buffer.close(importfc);
+									importfc = buffer.openFile(fileName, "rw");
+									block = buffer.acquireBlock(importfc, currentBlock);
+									block.clear();
+									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+							}
 						}
 						stringField = new String(bytesOfString);
 						topic[k] = stringToByte(stringField);
 						topicLength[k] = (byte) topic[k].length;
+						usefulCounter = usefulCounter + topic[k].length;
 						//This means that there exist a topic in position # k.
 						if(topicLength[k]!=0){
 							topicExist[k] = 1;
+							realCounter = usefulCounter + 1;
 							/* only for debug purposes */ System.out.println(new String(topic[k]));
 						}
 						else{
@@ -228,115 +298,229 @@ public class FileManager extends AbstractFileManager{
 					for(int j = 0 ; j < 3 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					length = Short.parseShort(stringField);
 					/* only for debug purposes */ System.out.println(length);
+					usefulCounter = usefulCounter + 2;
 					//Get takings and convert it to the new physical-logical design 
 					bytesOfString = new byte[9];
 					for(int j = 0 ; j < 9 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					takings = Integer.parseInt(stringField);
 					/* only for debug purposes */ System.out.println(takings);
+					usefulCounter = usefulCounter + 4;
 					//Get director's name and convert it to the new physical-logical design
 					bytesOfString = new byte[35];
 					for(int j = 0 ; j < 35 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					directorName = stringToByte(stringField);
 					directorNameLength = (byte) directorName.length;
 					/* only for debug purposes */ System.out.println(new String(directorName));
+					usefulCounter = usefulCounter + directorName.length;
 					//Get director's surname and convert it to the new physical-logical design
 					bytesOfString = new byte[15];
 					for(int j = 0 ; j < 15 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					directorSurname = stringToByte(stringField);
 					directorSurnameLength = (byte) directorSurname.length;
 					/* only for debug purposes */ System.out.println(new String(directorSurname));
+					usefulCounter = usefulCounter + directorSurname.length;
 					//Get director's nickname and convert it to the new physical-logical design
 					bytesOfString = new byte[25];
 					for(int j = 0 ; j < 25 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					directorNickname = stringToByte(stringField);
 					directorNicknameLength = (byte) directorNickname.length;
 					/* only for debug purposes */ System.out.println(new String(directorNickname));
+					usefulCounter = usefulCounter + directorNickname.length;
 					//Get screenwriters's name and convert it to the new physical-logical design
 					bytesOfString = new byte[35];
 					for(int j = 0 ; j < 35 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					screenwriterName = stringToByte(stringField);
 					screenwriterNameLength = (byte) screenwriterName.length;
 					/* only for debug purposes */ System.out.println(new String(screenwriterName));
+					usefulCounter = usefulCounter + screenwriterName.length;
 					//Get screenwriter's surname and convert it to the new physical-logical design
 					bytesOfString = new byte[15];
 					for(int j = 0 ; j < 15 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					screenwriterSurname = stringToByte(stringField);
 					screenwriterSurnameLength = (byte) screenwriterSurname.length;
 					/* only for debug purposes */ System.out.println(new String(screenwriterSurname));
+					usefulCounter = usefulCounter + screenwriterSurname.length;
 					//Get screenwriter's nickname and convert it to the new physical-logical design
 					bytesOfString = new byte[25];
 					for(int j = 0 ; j < 25 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
+						if(bytesRead == 1024){
+								currentBlock++;
+								counter++;
+								bytesRead=0;
+								buffer.close(importfc);
+								importfc = buffer.openFile(fileName, "rw");
+								block = buffer.acquireBlock(importfc, currentBlock);
+								block.clear();
+								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+						}
 					}
 					stringField = new String(bytesOfString);
 					screenwriterNickname = stringToByte(stringField);
 					screenwriterNicknameLength = (byte) screenwriterNickname.length;
 					/* only for debug purposes */ System.out.println(new String(screenwriterNickname));
+					usefulCounter = usefulCounter + screenwriterNickname.length;
+					
 					for(int k = 0 ; k < 8 ; k++){
 						//Get actors's name and convert it to the new physical-logical design
 						bytesOfString = new byte[35];
 						for(int j = 0 ; j < 35 ; j++){
 							bytesOfString[j] = block.get();
 							bytesRead++;
+							if(bytesRead == 1024){
+									currentBlock++;
+									counter++;
+									bytesRead=0;
+									buffer.close(importfc);
+									importfc = buffer.openFile(fileName, "rw");
+									block = buffer.acquireBlock(importfc, currentBlock);
+									block.clear();
+									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+							}
 						}
 						stringField = new String(bytesOfString);
 						actorName[k] = stringToByte(stringField);
 						actorNameLength[k] = (byte) actorName[k].length;
+						usefulCounter = usefulCounter + actorName[k].length;
 						//Get actor's surname and convert it to the new physical-logical design
 						bytesOfString = new byte[15];
 						for(int j = 0 ; j < 15 ; j++){
 							bytesOfString[j] = block.get();
 							bytesRead++;
+							if(bytesRead == 1024){
+									currentBlock++;
+									counter++;
+									bytesRead=0;
+									buffer.close(importfc);
+									importfc = buffer.openFile(fileName, "rw");
+									block = buffer.acquireBlock(importfc, currentBlock);
+									block.clear();
+									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
+							}
 						}
 						stringField = new String(bytesOfString);
 						actorSurname[k] = stringToByte(stringField);
 						actorSurnameLength[k] = (byte) actorSurname[k].length;
+						usefulCounter = usefulCounter + actorSurname[k].length;
 						//Get actor's nickname and convert it to the new physical-logical design
 						bytesOfString = new byte[25];
 						for(int j = 0 ; j < 25 ; j++){
 							bytesOfString[j] = block.get();
 							bytesRead++;
 							if(bytesRead == 1024){
-								currentBlock++;
-								bytesRead=0;
-								buffer.close(importfc);
-								importfc = buffer.openFile(fileName, "rw");
-								block = buffer.acquireBlock(importfc, currentBlock);
-								block.clear();
+									currentBlock++;
+									counter++;
+									bytesRead=0;
+									buffer.close(importfc);
+									importfc = buffer.openFile(fileName, "rw");
+									block = buffer.acquireBlock(importfc, currentBlock);
+									block.clear();
+									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 							}
 						}
 						stringField = new String(bytesOfString);
 						actorNickname[k] = stringToByte(stringField);
 						actorNicknameLength[k] = (byte) actorNickname[k].length;
+						usefulCounter = usefulCounter + actorNickname[k].length;
 						//This means that there exist a topic in position # k.
 						if(actorNicknameLength[k]!=0){
 							actorExist[k] = 1;
