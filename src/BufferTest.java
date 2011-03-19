@@ -84,7 +84,7 @@ public class BufferTest {
                         block = buffer.acquireBlock(f0, 0);
                         block.clear();                        
                         block.get(bytesOfString);
-			System.out.println(new String(bytesOfString));
+                        System.out.println(new String(bytesOfString));
                         //Se pone lleva el puntero a la posici�n inicial del block y se sustituye por la misma cadena en may�sculas
                         block.clear();
                         block.put(new String(bytesOfString).toUpperCase().getBytes());
@@ -95,7 +95,7 @@ public class BufferTest {
                         System.out.println("\n5: Write block 0 (testFile1.txt)\n");
                         
                         // Se abre el fichero 'prueba1.txt' en la memoria intermedia en la variable f1 (si no existe el fichero se crea).
-			f1 = buffer.openFile("testFile1.txt","rw");
+                        f1 = buffer.openFile("testFile1.txt","rw");
                         
                         // Se adquiere el bloque 0 de f1, se lleva el puntero a la posici�n inicial y se escribe en �l la cadena de caracteres f1String0 (1 acceso, como mucho van 5)
                         block = buffer.acquireBlock(f1, 0);

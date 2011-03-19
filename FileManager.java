@@ -3,11 +3,8 @@ import fileSystem.utils.LogicalRecord;
 import fileSystem.utils.Buffer;
 import fileSystem.utils.UserInterface;
 
-import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.math.BigInteger;
-import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Vector;
@@ -33,32 +30,28 @@ public class FileManager extends AbstractFileManager{
     private Buffer buffer=null;
     FileChannel fc=null;
     ByteBuffer block = null;
-    ByteArray myByteArray = new ByteArray();
-    int currentblock = 0;
-    int currentBlockInOverflowArea = 668;
-    int[] alreadyWritten = new int[667];
+    ByteBuffer blockToWrite = null;
+    int currentBlockToWrite = 0;
+    int[] alreadyWritten = new int[692];
     int alreadyWrittenOverflow = 0;
-    int[] hashArray = new int[667];
-    boolean[] resultSet = new boolean[667]; 
+    int hashArray[] = new int[692];
     int hashCounter = 0;
-    int recordSize = 0;
-    short lengthShort;
-    short yearShort;
     // Length and existence marks
     byte titleLength, nationalityLength, voLength,
     nameLength, surnameLength, nicknameLength, nicknameExist;
     // Arrays where the fields will be saved according to the physical logical design.
     byte [] topicExist = new byte[16];
+    byte [] topicLength = new byte[16];
     byte [] title = new byte[titleLength]; 
     byte [] nationality = new byte[nationalityLength];
     byte [] vo = new byte[voLength];
     byte [] year;
     // Topic may be designed as a linked list or as a bidimensional array
-    byte [] topic = new byte[16];
+    byte [][] topic = new byte[16][];
     // A short in java is 2 bytes so length could be of this type
-    byte [] length;
+    short length;
     // An int in java is 4 bytes so takings could be of this type
-    byte [] takings;
+    int takings;
     byte [] directorName;
     byte directorNameLength;
     byte [] directorSurname;
@@ -84,6 +77,7 @@ public class FileManager extends AbstractFileManager{
     public FileManager() {
         //Construye una memoria intermedia con pol�tica de liberaci�n aleatoria de 16 p�ginas de 1024 bytes.
         buffer=new RABuffer(); 
+ 
     }
 
     /**
@@ -93,9 +87,14 @@ public class FileManager extends AbstractFileManager{
     * @return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */    
     public String openFileSystem(String fileName) {
-    	//Open file fileName with all permissions allowed a
+    	//Open file fileName with all permissions allowed and get first block
+    	boolean haveData=false;
     	try {
 			fc = buffer.openFile(fileName, "rw");
+			block=buffer.acquireBlock(fc,0);
+			if (block != null){
+				haveData = true;
+			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IllegalArgumentException e) {
@@ -104,7 +103,12 @@ public class FileManager extends AbstractFileManager{
 			e.printStackTrace();
 		}
 		
-		return "File system ("+fileName+")' is now open";
+		if (haveData){
+			return "File system ("+fileName+")' is now open and it contains data";
+		}
+		else{
+			return "File system ("+fileName+") is now open and it does not contain data";
+		}
     }
 
     /**
@@ -144,20 +148,22 @@ public class FileManager extends AbstractFileManager{
     	byte bytesOfString[];
     	String stringField;
     	FileChannel importfc = null;
+    	Buffer importBuffer;
+    	importBuffer = new RABuffer();
     	boolean EOF = false;
     	int eofCounter = 0;
     	int currentBlock = 0;
     	int counter = 0;
     	int usefulCounter = 0;
     	int realCounter = 0;
+    	int recordSize = 0;
         //Keep track of how many bytes are left in block
         int bytesRead = 0;
-        int topicCounter = 0;
-        boolean topicFound = false;
+        int bytesWritten = 0;
         
 		try {
-			importfc = buffer.openFile(fileName, "rw");
-			block = buffer.acquireBlock(importfc, currentBlock);
+			importfc = importBuffer.openFile(fileName, "rw");
+			block = importBuffer.acquireBlock(importfc, currentBlock);
 			block.clear();
 		} catch (FileNotFoundException e1) {
 			e1.printStackTrace();
@@ -168,8 +174,6 @@ public class FileManager extends AbstractFileManager{
 		}
 		while(!EOF){
 			try {
-				block = buffer.acquireBlock(importfc, currentBlock);
-				block.position(bytesRead);
 				//Get title and convert it to the new physical-logical design
 				bytesOfString = new byte[70];
 				//block.get(bytesOfString) 
@@ -181,9 +185,9 @@ public class FileManager extends AbstractFileManager{
 					}
 					if(bytesRead == 1024){
 							currentBlock++;
-							//counter++;
+							counter++;
 							bytesRead=0;
-							block = buffer.acquireBlock(importfc, currentBlock);
+							block = importBuffer.acquireBlock(importfc, currentBlock);
 							block.clear();
 							System.out.println(currentBlock + " file channel position (import fc): " + importfc.position());
 					}
@@ -191,13 +195,14 @@ public class FileManager extends AbstractFileManager{
 				stringField = new String(bytesOfString);
 		    	title = stringToByte(stringField);
 				titleLength = (byte) title.length;
-				System.out.println(new String(title));
+				System.out.println(stringField);
 				if (eofCounter >= 4){
 					System.out.println("Useful bytes " + usefulCounter);
 					System.out.println("AVG. useful bytes/record " + usefulCounter/counter);
 					System.out.println("Real bytes "+ realCounter);
-					System.out.println("AVG. real bytes/record " + realCounter/counter);
+					System.out.println("AVG. reals bytes/record " + realCounter/counter);
 					System.out.println("Nr of records " + counter);
+					System.out.println("Repeated hash keys: "+ hashCounter);
 					System.out.println("EOF reached. Stopping..");
 					EOF = true;
 					/* only for debug purposes */ System.out.println("####");
@@ -210,13 +215,16 @@ public class FileManager extends AbstractFileManager{
 					recordSize = recordSize + title.length + 1;
 					//Get nationality and convert it to the new physical logical design
 					bytesOfString = new byte[14];
-					for(int j = 0; j < 14 ; j++){
+					for(int j = 0				 ; j < 14 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -235,11 +243,11 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
 								 
 								 
-								block = buffer.acquireBlock(importfc, currentBlock);
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -259,127 +267,51 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
 					}
 					stringField = new String(bytesOfString);
-					yearShort = Short.parseShort(stringField);
-					//yearShort = readShort(bytesOfString, 0);
-					year = shortToByte(yearShort);
-					
+					year = stringToByte(stringField);
 					/* only for debug purposes */ System.out.println(new String(year));
-					usefulCounter = usefulCounter + 2;
-					realCounter = realCounter + 2;
-					recordSize = recordSize + 2;
+					usefulCounter = usefulCounter + year.length;
+					realCounter = realCounter + year.length;
+					recordSize = recordSize + year.length;
 					//Get the topics. In our design a mark of existence will be written before the set of fields.
 					//This mark will consist in a byte specifying how many topics there will be
 					bytesOfString = new byte[15];
-					topicCounter = 0;
 					for(int k = 0; k < 16; k++){
 						for(int j = 0 ; j < 15 ; j++){
 							bytesOfString[j] = block.get();
 							bytesRead++;
 							if(bytesRead == 1024){
 									currentBlock++;
-									//counter++;
+									counter++;
 									bytesRead=0;
-									block = buffer.acquireBlock(importfc, currentBlock);
+									 
+									 
+									block = importBuffer.acquireBlock(importfc, currentBlock);
 									block.clear();
 									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 							}
 						}
 						stringField = new String(bytesOfString);
-						topicFound = false;
-						if (stringField.contains("suspense")){
-							topic[k] = (byte) 1;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("romantica")){
-							topic[k] = (byte) 2;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("comedia")){
-							topic[k] = (byte) 3;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("aventura")){
-							topic[k] = (byte) 4;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("fantasia")){
-							topic[k] = (byte) 5;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("infantil")){
-							topic[k] = (byte) 6;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("western")){
-							topic[k] = (byte) 7;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("policiaco")){
-							topic[k] = (byte) 8;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("historica")){
-							topic[k] = (byte) 9;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("drama")){
-							topic[k] = (byte) 10;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("accion")){
-							topic[k] = (byte) 11;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("belica")){
-							topic[k] = (byte) 12;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("ciencia ficcion")){
-							topic[k] = (byte) 13;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("terror")){
-							topic[k] = (byte) 14;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("animacion")){
-							topic[k] = (byte) 15;
-							topicCounter++;
-							topicFound = true;
-						}
-						if (stringField.contains("musical")){
-							topic[k] = (byte) 16;
-							topicCounter++;
-							topicFound = true;
-						}
+						topic[k] = stringToByte(stringField);
+						topicLength[k] = (byte) topic[k].length;
+						usefulCounter = usefulCounter + topic[k].length;
+						realCounter = realCounter + topic[k].length + 1;
+						recordSize = recordSize + topic[k].length + 1;
 						//This means that there exist a topic in position # k.
-						if(topicFound){
+						if(topicLength[k]!=0){
 							topicExist[k] = 1;
 							realCounter = realCounter + 1;
 							recordSize = recordSize + 1;
-							/* only for debug purposes */ System.out.println(stringField);
+							/* only for debug purposes */ System.out.println(new String(topic[k]));
 						}
 						else{
 							topicExist[k]=0;
@@ -387,9 +319,6 @@ public class FileManager extends AbstractFileManager{
 							recordSize = recordSize + 1;
 						}
 					}
-					usefulCounter = usefulCounter + topicCounter;
-					realCounter = realCounter + topicCounter;
-					recordSize = recordSize + topicCounter;
 					//Get length of the movie and convert it to the new physical-logical design
 					bytesOfString = new byte[3];
 					for(int j = 0 ; j < 3 ; j++){
@@ -397,21 +326,20 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
-								bytesRead=0; 
-								block = buffer.acquireBlock(importfc, currentBlock);
+								counter++;
+								bytesRead=0;
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
 					}
 					stringField = new String(bytesOfString);
 					/* only for debug purposes */
-					//myByteArray.writeBytes(length, 0, 2);
-					//length = shortToByte(Short.parseShort(stringField));
-					lengthShort = Short.parseShort(stringField);
-					//lengthShort = readShort(bytesOfString,0);
-					length = shortToByte(lengthShort);
-					System.out.println(lengthShort);																				
+					length = Short.parseShort(stringField);
+					System.out.println(length);
+																				
 					usefulCounter = usefulCounter + 2;
 					realCounter = realCounter + 2;
 					recordSize = recordSize + 2;
@@ -422,32 +350,33 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
 					}
 					stringField = new String(bytesOfString);
-					takings = ByteBuffer.allocate(4).putInt(Integer.parseInt(stringField)).array();
-					//int takingsInteger = byteArrayToInt(bytesOfString);
-					//takings = intToByteArray(takingsInteger);
-					//takings = stringToByte(stringField);
-					/* only for debug purposes */ System.out.println(new String(takings));
+					takings = Integer.parseInt(stringField);
+					/* only for debug purposes */ System.out.println(takings);
 					usefulCounter = usefulCounter + 4;
 					realCounter = realCounter + 4;
 					recordSize = recordSize + 4;
 					//Get director's name and convert it to the new physical-logical design
 					bytesOfString = new byte[35];
-					for(int j = 0 ; j < 35 ; j++){			
+					for(int j = 0 ; j < 35 ; j++){
 						bytesOfString[j] = block.get();
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -466,9 +395,11 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -487,9 +418,11 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -508,9 +441,11 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -529,9 +464,11 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -550,9 +487,11 @@ public class FileManager extends AbstractFileManager{
 						bytesRead++;
 						if(bytesRead == 1024){
 								currentBlock++;
-								//counter++;
+								counter++;
 								bytesRead=0;
-								block = buffer.acquireBlock(importfc, currentBlock);
+								 
+								 
+								block = importBuffer.acquireBlock(importfc, currentBlock);
 								block.clear();
 								System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 						}
@@ -572,11 +511,11 @@ public class FileManager extends AbstractFileManager{
 							bytesRead++;
 							if(bytesRead == 1024){
 									currentBlock++;
-									//counter++;
+									counter++;
 									bytesRead=0;
 									 
 									 
-									block = buffer.acquireBlock(importfc, currentBlock);
+									block = importBuffer.acquireBlock(importfc, currentBlock);
 									block.clear();
 									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 							}
@@ -594,11 +533,11 @@ public class FileManager extends AbstractFileManager{
 							bytesRead++;
 							if(bytesRead == 1024){
 									currentBlock++;
-									//counter++;
+									counter++;
 									bytesRead=0;
 									 
 									 
-									block = buffer.acquireBlock(importfc, currentBlock);
+									block = importBuffer.acquireBlock(importfc, currentBlock);
 									block.clear();
 									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 							}
@@ -616,9 +555,11 @@ public class FileManager extends AbstractFileManager{
 							bytesRead++;
 							if(bytesRead == 1024){
 									currentBlock++;
-									//counter++;
+									counter++;
 									bytesRead=0;
-									block = buffer.acquireBlock(importfc, currentBlock);
+									 
+									 
+									block = importBuffer.acquireBlock(importfc, currentBlock);
 									block.clear();
 									System.out.println(currentBlock  + " file channel position (import fc): " + importfc.position());
 							}
@@ -644,9 +585,9 @@ public class FileManager extends AbstractFileManager{
 							actorExist[k]=0;
 						}
 					}
-					System.out.println("The record size is "+ recordSize);
 				}
 			// Write to file
+			// TODO : Solve error
 			write();
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -667,19 +608,18 @@ public class FileManager extends AbstractFileManager{
     	int titleSum2 = 0;
 		int key = 0;
     	
-    	for (int i = 0 ; i <(input.length/2) ; i ++){
-			titleSum1 += input[i];
+    	for (int i = 0 ; i <(title.length/2) ; i ++){
+			titleSum1 += title[i];
 		}
-		for (int i = (input.length/2) ; i <input.length ; i ++){
-			titleSum2 += input[i];
+		for (int i = (title.length/2) ; i <title.length ; i ++){
+			titleSum2 += title[i];
 		}
 		
-		key = (titleSum1 + titleSum2) % 667;
+		key = (titleSum1 + titleSum2) % 692;
     	return key;
     }
     
-    
-    
+
     /**
      * String to byte array. Removes spaces from the string
      * 
@@ -688,180 +628,541 @@ public class FileManager extends AbstractFileManager{
      */
 
     public void write(){
-    	int writtenBytes =  alreadyWritten[currentblock]+recordSize;
-    	//Current block to write can never be more than 667
-    	currentblock = createHash(title);
-    	System.out.println("Written bytes in block :" + writtenBytes);
-		if((1023 - recordSize - alreadyWritten[currentblock]) >= 3){
+    	int totalBytes = getTotalBytes();
+    	//Current block to write can never be more than 692
+    	currentBlockToWrite = createHash(title);
+    	
+		if((1024 - totalBytes - alreadyWritten[currentBlockToWrite]) >= 3){
 			try {
-				block = buffer.acquireBlock(fc, currentblock);
-				block.position(alreadyWritten[currentblock]);
+				blockToWrite = buffer.acquireBlock(fc, currentBlockToWrite);
+				blockToWrite.position(alreadyWritten[currentBlockToWrite]);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			block.put(titleLength);    	
-			block.put(title);
-			block.put(nationalityLength);
-			block.put(nationality);
-			block.put(voLength);
-			block.put(vo);
-			block.put(year);
-			
+			blockToWrite.put(titleLength);    	
+			blockToWrite.put(title);
+			blockToWrite.put(nationality);
+			blockToWrite.put(nationalityLength);
+			blockToWrite.put(vo);
+			blockToWrite.put(voLength);
+			blockToWrite.put(year);
 			for(int i = 0; i<16 ; i++){
 				if(topicExist[i] == 1){
-					block.put(topicExist[i]);
-					block.put(topic[i]);
+					blockToWrite.put(topicLength[i]);
+					blockToWrite.put(topicExist[i]);
 				}
 				if(topicExist[i] == 0){
-					block.put(topicExist[i]);
+					blockToWrite.put(topicExist[i]);
 				}
 			}
-			block.put(length);
-			block.put(takings);
-			block.put(directorNameLength);
-			block.put(directorName);
-			block.put(directorSurnameLength);
-			block.put(directorSurname);
-			block.put(directorNicknameLength);
-			block.put(directorNickname);
-			block.put(screenwriterNameLength);
-			block.put(screenwriterName);
-			block.put(screenwriterSurnameLength);
-			block.put(screenwriterSurname);
-			block.put(screenwriterNicknameLength);
-			block.put(screenwriterNickname);
-			
+			blockToWrite.put((byte) length);
+			blockToWrite.put((byte) takings);
+			blockToWrite.put(directorName);
+			blockToWrite.put(directorNameLength);
+			blockToWrite.put(directorSurname);
+			blockToWrite.put(directorSurnameLength);
+			blockToWrite.put(directorNickname);
+			blockToWrite.put(directorNicknameLength);
+			blockToWrite.put(screenwriterName);
+			blockToWrite.put(screenwriterNameLength);
+			blockToWrite.put(screenwriterSurname);
+			blockToWrite.put(screenwriterSurnameLength);
+			blockToWrite.put(screenwriterNickname);
+			blockToWrite.put(screenwriterNicknameLength);
 			for(int i = 0; i<8; i++){
 				if(actorExist[i] == 0){
-					block.put(actorExist[i]);
+					blockToWrite.put(actorExist[i]);
 				}
 				if(actorExist[i] == 1){
-					block.put(actorExist[i]);
-					block.put(actorNameLength[i]);
-					block.put(actorName[i]);
-					block.put(actorSurnameLength[i]);
-					block.put(actorSurname[i]);
-					block.put(actorNicknameLength[i]);
-					block.put(actorNickname[i]);
-					}
+					blockToWrite.put(actorExist[i]);
+					blockToWrite.put(actorName[i]);
+					blockToWrite.put(actorNameLength[i]);
+					blockToWrite.put(actorSurname[i]);
+					blockToWrite.put(actorSurnameLength[i]);
+					blockToWrite.put(actorNickname[i]);
+					blockToWrite.put(actorNicknameLength[i]);
 				}
-			
-			alreadyWritten[currentblock] += recordSize;
-			//Write PPL bytes
-			block.position(1021);
-			block.put(intToByteArray(alreadyWritten[currentblock]));
+			}
+			alreadyWritten[currentBlockToWrite] += totalBytes;
 		}
 		else{
-			try {
-				block = buffer.acquireBlock(fc, currentblock);
-				//Write Overflow byte
-				block.position(1023);
-				block.put((byte) 1);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			int currentBlockInOverflowArea = 693;
 			String getValue;
 			try {
-				block = buffer.acquireBlock(fc, currentBlockInOverflowArea);
-				block.clear();
+				blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+				blockToWrite.clear();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			for(int i = 0 ; i<1024; i++){
-				getValue = Byte.toString(block.get());
+				getValue = Byte.toString(blockToWrite.get());
 				if(getValue == null){
 					break;
 				}
 			}
-			alreadyWrittenOverflow = block.position();
+			alreadyWrittenOverflow = blockToWrite.position();
 			//Write serially. If 1024 bytes are reached, go for the next block
-			writeOverflow(titleLength);
-			writeOverflow(title);
-			writeOverflow(nationalityLength);
-			writeOverflow(nationality);
-			writeOverflow(voLength);
-			writeOverflow(vo);
-			writeOverflow(year);
+			if((1024 - alreadyWrittenOverflow) > 1){
+				blockToWrite.put(titleLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > title.length){
+				blockToWrite.put(title);
+				alreadyWrittenOverflow += title.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 -alreadyWrittenOverflow) > 1){
+				blockToWrite.put(nationalityLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > nationality.length){	
+				blockToWrite.put(nationality);
+				alreadyWrittenOverflow += nationality.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 -alreadyWrittenOverflow) > 1){
+				blockToWrite.put(voLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > vo.length){
+				blockToWrite.put(vo);
+				alreadyWrittenOverflow += vo.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > year.length){
+				blockToWrite.put(year);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
 			for(int i = 0; i<16 ; i++){
 				if(topicExist[i] == 1){
-					writeOverflow(topicExist[i]);
-					writeOverflow(topic[i]);
+					if((1024 - alreadyWrittenOverflow) > 1){
+						blockToWrite.put(topicLength[i]);
+						alreadyWrittenOverflow += 1;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
+					if((1024 - alreadyWrittenOverflow) > topic[i].length){
+						blockToWrite.put(topic[i]);
+						alreadyWrittenOverflow += topic[i].length;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
 				}
-				if(topicExist[i] == 0){
-					writeOverflow(topicExist[i]);
+				if((1024 - alreadyWrittenOverflow) > 1){
+					blockToWrite.put(topicLength[i]);
+					alreadyWrittenOverflow += 1;
+				}
+				else{
+					currentBlockInOverflowArea++;
+					try {
+						blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+						blockToWrite.clear();
+						alreadyWrittenOverflow = 0;
+					} catch (IOException e) {
+						e.printStackTrace();
+					}	
 				}
 			}
-			writeOverflow(length);
-			writeOverflow(takings);
-			writeOverflow(directorNameLength);
-			writeOverflow(directorName);
-			writeOverflow(directorSurnameLength);
-			writeOverflow(directorSurname);
-			writeOverflow(directorNicknameLength);
-			writeOverflow(directorNickname);
-			writeOverflow(screenwriterNameLength);
-			writeOverflow(screenwriterName);
-			writeOverflow(screenwriterSurnameLength);
-			writeOverflow(screenwriterSurname);
-			writeOverflow(screenwriterNicknameLength);
-			writeOverflow(screenwriterNickname);
+			if((1024 - alreadyWrittenOverflow) > 2){
+				blockToWrite.put((byte) length);
+				alreadyWrittenOverflow += 2;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > 4){
+				blockToWrite.put((byte) takings);
+				alreadyWrittenOverflow += 4;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > 1){
+				blockToWrite.put(directorNameLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > directorName.length){
+				blockToWrite.put(directorName);
+				alreadyWrittenOverflow += directorName.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > 1){
+				blockToWrite.put(directorSurnameLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > directorSurname.length){
+				blockToWrite.put(directorSurname);
+				alreadyWrittenOverflow += directorSurname.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > 1 ){
+				blockToWrite.put(directorNicknameLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try{
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > directorNickname.length){
+				blockToWrite.put(directorNickname);
+				alreadyWrittenOverflow += directorNickname.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > 1 ){
+				blockToWrite.put(screenwriterNameLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > screenwriterName.length){
+				blockToWrite.put(screenwriterName);
+				alreadyWrittenOverflow += screenwriterName.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > 1 ){
+				blockToWrite.put(screenwriterSurnameLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > screenwriterSurname.length){
+				blockToWrite.put(screenwriterSurname);
+				alreadyWrittenOverflow += screenwriterSurname.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > 1 ){
+				blockToWrite.put(screenwriterNicknameLength);
+				alreadyWrittenOverflow += 1;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
+			if((1024 - alreadyWrittenOverflow) > screenwriterNickname.length){
+				blockToWrite.put(screenwriterNickname);
+				alreadyWrittenOverflow += screenwriterNickname.length;
+			}
+			else{
+				currentBlockInOverflowArea++;
+				try {
+					blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+					blockToWrite.clear();
+					alreadyWrittenOverflow = 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}	
+			}
 			for(int i = 0; i<8; i++){
 				if(actorExist[i] == 0){
-					writeOverflow(actorExist[i]);
+					if((1024 - alreadyWrittenOverflow) > 1 ){
+						blockToWrite.put(actorExist[i]);
+						alreadyWrittenOverflow += 1;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
 				}
 				if(actorExist[i] == 1){
-					writeOverflow(actorExist[i]);
-					writeOverflow(actorNameLength[i]);
-					writeOverflow(actorName[i]);
-					writeOverflow(actorSurnameLength[i]);
-					writeOverflow(actorSurname[i]);
-					writeOverflow(actorNicknameLength[i]);
-					writeOverflow(actorNickname[i]);
+					if((1024 - alreadyWrittenOverflow) > 1 ){
+						blockToWrite.put(actorExist[i]);
+						alreadyWrittenOverflow += 1;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
+					if((1024 - alreadyWrittenOverflow) > 1){
+						blockToWrite.put(actorNameLength[i]);
+						alreadyWrittenOverflow += 1;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
+					if((1024 - alreadyWrittenOverflow) > actorName[i].length ){
+						blockToWrite.put(actorName[i]);
+						alreadyWrittenOverflow += actorName[i].length;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
+					if((1024 - alreadyWrittenOverflow) > 1){
+						blockToWrite.put(actorSurnameLength[i]);
+						alreadyWrittenOverflow += 1;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
+					if((1024 - alreadyWrittenOverflow) > actorSurname[i].length){
+						blockToWrite.put(actorSurname[i]);
+						alreadyWrittenOverflow += actorSurname[i].length;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
+					if((1024 - alreadyWrittenOverflow) > 1){
+						blockToWrite.put(actorNicknameLength[i]);
+						alreadyWrittenOverflow += 1;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
+					if((1024 - alreadyWrittenOverflow) > actorNickname[i].length){
+						blockToWrite.put(actorNickname[i]);
+						alreadyWrittenOverflow += actorNickname.length;
+					}
+					else{
+						currentBlockInOverflowArea++;
+						try {
+							blockToWrite = buffer.acquireBlock(fc, currentBlockInOverflowArea);
+							blockToWrite.clear();
+							alreadyWrittenOverflow = 0;
+						} catch (IOException e) {
+							e.printStackTrace();
+						}	
+					}
 				}
 			}
 		}
     }
     
-    /**
-     * Writes in the overflow area an array of bytes
-     * 
-     * @parameter an array of bytes
-     * @return void
-     */
-    
-    public void writeOverflow(byte[] myByteArray){
-    	if((1024 - alreadyWrittenOverflow) > myByteArray.length){
-			block.put(myByteArray);
-			alreadyWrittenOverflow += myByteArray.length;
-		}
-		else{
-			currentBlockInOverflowArea++;
-			try {
-				block = buffer.acquireBlock(fc, currentBlockInOverflowArea);
-				block.clear();
-				alreadyWrittenOverflow = 0;
-			} catch (IOException e) {
-				e.printStackTrace();
-			}	
-		}
-    }
-    
-    public void writeOverflow(byte myByte){
-    	if((1024 - alreadyWrittenOverflow) > 1){
-			block.put(myByte);
-			alreadyWrittenOverflow += 1;
-		}
-		else{
-			currentBlockInOverflowArea++;
-			try {
-				block = buffer.acquireBlock(fc, currentBlockInOverflowArea);
-				block.clear();
-				alreadyWrittenOverflow = 0;
-			} catch (IOException e) {
-				e.printStackTrace();
-			}	
-		}
-    }
     /**
      * Write the byte array to the opened file
      * 
@@ -878,48 +1179,40 @@ public class FileManager extends AbstractFileManager{
     }
     
     /**
-     * Short to byte array
+     * Get total bytes
      * 
-     * 
+     * @return int
      */
 
-    public static byte[] shortToByte(short s) {
-        return new byte[]{(byte)(s & 0x00FF),(byte)((s & 0xFF00)>>8)};
+    public int getTotalBytes (){
+    	int totalTopics = 0;
+    	int totalActors = 0;
+    	int totalTopicLength = 0;
+    	int totalActorLength = 0;
+    	
+    	for(int i = 0 ; i<16; i++){
+    		if(topicExist[i] == 1){
+    			totalTopics++;
+    			totalTopicLength += topicLength[i]; 
+    		}
+    	}
+    	for(int i = 0 ; i<7; i++){
+    		if(actorExist[i] == 1){
+    			totalActors++;
+    			totalActorLength += actorNameLength[i];
+    			totalActorLength += actorSurnameLength[i];
+    			totalActorLength += actorNicknameLength[i];
+    		}
+    	}
+    	
+    	return title.length + 1 + nationality.length + 1 + vo.length + 1 + year.length + 2 + 4 
+    	+ directorName.length + 1 +directorSurname.length + 1 + directorNickname.length + 1 +
+    	+ screenwriterName.length + 1 + screenwriterSurname.length + 1 + screenwriterNickname.length + 1 +
+    	+ directorName.length + 1 +directorSurname.length + 1 + directorNickname.length + 1 + totalActors
+    	+ totalTopics + totalTopicLength + 3*totalTopics  + totalActors + totalActorLength + 3*totalActors;
+		
     }
-    /**
-     * Get an array of 2 bytes out of an int. It is only used to get the PPL
-     * 
-     * @param integer to use
-     */
-    
-    public static byte[] intToByteArray(int a){
-		BigInteger bigInt = BigInteger.valueOf(a);
-		return bigInt.toByteArray();
-	}
-    
-    /**
-     * readShort
-     * 
-     * 
-     */
-    
-    public static short readShort(byte[] data, int offset) {
-		return (short) (((data[offset] << 8)) | ((data[offset + 1] & 0xff)));
-	}
-    
-    /**
-     * Get an int out of a byte array
-     * 
-     * @param integer to use
-     */
-    
-	public static int byteArrayToInt(byte[] bytes){
-		int value = 0;
-		for(int i=0; i<bytes.length;i++){
-			value = (value << 8) + (bytes[i] & 0xff);
-		}
-		return value;
-	}
+
 
     /**
     * Busca los registros de un fileName concreto que cumplen unas determinadas condiciones especificadas en inputRecord y devuelve el primero de ellos en outputRecord.
@@ -928,280 +1221,29 @@ public class FileManager extends AbstractFileManager{
     * @param outputRecord registro l�gico en el que se devuelve el primer resultado de la b�squeda.
     * @return Devuelve una cadena de caracteres que se mostrar� en la parte inferior de la ventana de interfaz como resultado de la ejecuci�n de este m�todo.
     */
-	
     public String select(LogicalRecord inputRecord, LogicalRecord outputRecord) {
     	
         //Pone los valores del registro de salida a null
         for(String fieldName:inputRecord.getFieldNames()){
-            outputRecord.setField(fieldName, inputRecord.getField(fieldName));
+            outputRecord.setField(fieldName,"null");
         }
         
-        String inputTitle = inputRecord.getField("Title");
-        int key;
-        int titleLengthRead;
-        int recordsCounter = 0;
-        byte[] titleRead;
-        boolean recordFound = false;
-        
-        if(inputTitle != null){
-        	ByteBuffer readBuffer = null;
-        	key = createHash(stringToByte(inputTitle));
-        	try {
-				readBuffer = buffer.acquireBlock(fc, key);
-				readBuffer.clear();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			//Bring title.length
-			while(!recordFound){
-				titleLengthRead = readBuffer.get();
-				titleRead = new byte[titleLengthRead];
-				for(int i = 0 ; i<titleLengthRead; i++){
-					titleRead[i] = readBuffer.get();
-				}
-				if(inputTitle.equals(new String(titleRead))){
-					recordFound = true;
-					outputRecord.setField("Title", inputTitle);
-					setOutputRecords("Nationality", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("O.L.", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Year", 2, readBuffer, outputRecord);
-					//Set topics. If topic.exist is set to 0, the field is set to ""
-					for(int i = 0 ; i < 16; i++){
-						if(readBuffer.get() == 0){
-							//outputRecord.setField("Topic", "");
-						}
-						else{
-							setOutputRecords("Topic", 1, readBuffer, outputRecord);
-						}
-					}
-					setOutputRecords("Length (min)", 2, readBuffer, outputRecord);
-					setOutputRecords("Takings (€)", 4, readBuffer, outputRecord);
-					setOutputRecords("Director.Name", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Director.S1", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Director.S2", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Screen.Name", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Screen.S1", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Screen.Nickname", readBuffer.get(), readBuffer, outputRecord);
-					//Set actors in the same way topics were set
-					for(int i = 0 ; i < 8; i++){
-						if(readBuffer.get() == 0){
-							outputRecord.setField("Actor"+i+".Name", "");
-							outputRecord.setField("Actor"+i+".S1", "");
-							outputRecord.setField("Actor"+i+".Nickname", "");
-						}
-						else{
-							setOutputRecords("Actor"+i+".Name", readBuffer.get(), readBuffer, outputRecord);
-							setOutputRecords("Actor"+i+".S1", readBuffer.get(), readBuffer, outputRecord);
-							setOutputRecords("Actor"+i+".Nickname", readBuffer.get(), readBuffer, outputRecord);
-						}
-					}
-				}else{
-					if(recordsCounter == 0){
-						readRecord(readBuffer);
-						recordsCounter++;
-					}
-					if(recordsCounter > 3){
-						//Read the overflow area
-						try {
-							readBuffer = buffer.acquireBlock(fc, 693);
-							readBuffer.clear();
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-						//Search serially
-						boolean recordInOverflow = false;
-						while(!recordInOverflow){
-							recordInOverflow = searchRecord(readBuffer, inputTitle, outputRecord);
-						}
-					}
-					if(recordsCounter > 1 && recordsCounter < 3){
-						readRecordTitle(readBuffer);
-						recordsCounter++;
-					}
-				}
-			}
-        	
+        //Se crea una cadena de caracteres a partir del registro de entrada
+        String inputString=new String();
+        for(String fieldName:inputRecord.getFieldNames()){
+            inputString=inputString+inputRecord.getField(fieldName)+", ";
         }
-        return "Method 'FileManager.select' not implemented.";
+        if(inputString.length()>10)inputString=inputString.subSequence(0,10)+"...";
+        
+        //Se crea otra a partir del de salida
+        String outputString=new String();
+        for(String fieldName:outputRecord.getFieldNames()){
+            outputString=outputString+outputRecord.getField(fieldName)+", ";
+        }
+        if(outputString.length()>10)outputString=outputString.subSequence(0,10)+"...";
+        return "Method 'FileManager.select(<"+inputString+">, <"+outputString+">)' not implemented.";
     }
     
-    /**
-     * Search
-     * 
-     */
-    
-    public boolean searchRecord(ByteBuffer readBuffer, String inputTitle, LogicalRecord outputRecord){
-    	int titleLengthRead = readBuffer.get();
-		byte[] titleRead = new byte[titleLengthRead];
-		boolean recordFound = false;
-		for(int i = 0 ; i<titleLengthRead; i++){
-			titleRead[i] = readBuffer.get();
-		}
-		if(inputTitle.equals(new String(titleRead))){
-			recordFound = true;
-			outputRecord.setField("Title", inputTitle);
-			setOutputRecords("Nationality", readBuffer.get(), readBuffer, outputRecord);
-			setOutputRecords("O.L.", readBuffer.get(), readBuffer, outputRecord);
-			setOutputRecords("Year", 2, readBuffer, outputRecord);
-			//Set topics. If topic.exist is set to 0, the field is set to ""
-			for(int i = 0 ; i < 16; i++){
-				if(readBuffer.get() == 0){
-					//outputRecord.setField("Topic", "");
-				}
-				else{
-					setOutputRecords("Topic", 1, readBuffer, outputRecord);
-				}
-			}
-			setOutputRecords("Length (min)", 2, readBuffer, outputRecord);
-			setOutputRecords("Takings (€)", 4, readBuffer, outputRecord);
-			setOutputRecords("Director.Name", readBuffer.get(), readBuffer, outputRecord);
-			setOutputRecords("Director.S1", readBuffer.get(), readBuffer, outputRecord);
-			setOutputRecords("Director.S2", readBuffer.get(), readBuffer, outputRecord);
-			setOutputRecords("Screen.Name", readBuffer.get(), readBuffer, outputRecord);
-			setOutputRecords("Screen.S1", readBuffer.get(), readBuffer, outputRecord);
-			setOutputRecords("Screen.Nickname", readBuffer.get(), readBuffer, outputRecord);
-			//Set actors in the same way topics were set
-			for(int i = 0 ; i < 8; i++){
-				if(readBuffer.get() == 0){
-					outputRecord.setField("Actor"+i+".Name", "");
-					outputRecord.setField("Actor"+i+".S1", "");
-					outputRecord.setField("Actor"+i+".Nickname", "");
-				}
-				else{
-					setOutputRecords("Actor"+i+".Name", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Actor"+i+".S1", readBuffer.get(), readBuffer, outputRecord);
-					setOutputRecords("Actor"+i+".Nickname", readBuffer.get(), readBuffer, outputRecord);
-				}
-			}
-			return recordFound;
-		}
-		return recordFound;
-    }
-    
-    /**
-     * Read field
-     * 
-     * @param buffer
-     */
-    
-    	public void readField(ByteBuffer readBuffer, int length){
-    		if(length == 0){
-    			int lengthOfField = readBuffer.get();
-    			for(int i = 0; i<lengthOfField; i++){
-    				readBuffer.get();
-    			}
-    		}
-    		else{
-    			for(int i = 0; i<length; i++){
-    				readBuffer.get();
-    			}
-    		}
-    	}
-    
-    /**
-     * Read record
-     * 
-     * @param buffer
-     */
-    
-    	public void readRecord(ByteBuffer readBuffer){
-    		readField(readBuffer,0);
-    		readField(readBuffer,0);
-    		readField(readBuffer,0);
-			readField(readBuffer,2);
-			//Set topics. If topic.exist is set to 0, the field is set to ""
-			for(int i = 0 ; i < 16; i++){
-				if(readBuffer.get() == 0){
-				}
-				else{
-					readField(readBuffer,0);
-				}
-			}
-			readField(readBuffer, 2);
-			readField(readBuffer, 4);
-			readField(readBuffer, 0);
-			readField(readBuffer, 0);
-			readField(readBuffer, 0);
-			readField(readBuffer, 0);
-			readField(readBuffer, 0);
-			readField(readBuffer, 0);
-			//Set actors in the same way topics were set
-			for(int i = 0 ; i < 8; i++){
-				if(readBuffer.get() == 0){
-				}
-				else{
-					readField(readBuffer, 0);
-					readField(readBuffer, 0);
-					readField(readBuffer, 0);
-				}
-			}
-    	}
-    
-    	 /**
-         * Read record but do not read the title
-         * 
-         * @param buffer
-         */
-        
-        	public void readRecordTitle(ByteBuffer readBuffer){
-        		readField(readBuffer,0);
-        		readField(readBuffer,0);
-    			readField(readBuffer,2);
-    			//Set topics. If topic.exist is set to 0, the field is set to ""
-    			for(int i = 0 ; i < 16; i++){
-    				if(readBuffer.get() == 0){
-    				}
-    				else{
-    					readField(readBuffer,0);
-    				}
-    			}
-    			readField(readBuffer, 2);
-    			readField(readBuffer, 4);
-    			readField(readBuffer, 0);
-    			readField(readBuffer, 0);
-    			readField(readBuffer, 0);
-    			readField(readBuffer, 0);
-    			readField(readBuffer, 0);
-    			readField(readBuffer, 0);
-    			//Set actors in the same way topics were set
-    			for(int i = 0 ; i < 8; i++){
-    				if(readBuffer.get() == 0){
-    				}
-    				else{
-    					readField(readBuffer, 0);
-    					readField(readBuffer, 0);
-    					readField(readBuffer, 0);
-    				}
-    			}
-        	}
-        
-        
-    /**
-     * Set output records
-     * 
-     * @param string field
-     * @param int length field
-     * @param bytebuffer readbuffer
-     * @return 
-     */
-    
-   public void setOutputRecords (String field, int lengthField, ByteBuffer readBuffer, LogicalRecord outputRecord){
-	   byte[] myArray = new byte [lengthField];
-	   for(int i=0;i<lengthField;i++){
-		   myArray[i] = readBuffer.get();
-	   }
-	   if(field.contains("Takings (€)")){
-		   outputRecord.setField(field,Integer.toString(byteArrayToInt(myArray)));
-	   }
-	   else if(field.contains("Year")){
-	      outputRecord.setField(field,Integer.toString(readShort(myArray,0)));
-	   }
-	   else{
-		   outputRecord.setField(field,new String(myArray));
-	   }
-	   
-   }
-   
    /**
     * Recupera el siguiente registro que cumple el criterio de b�squeda actual
     * 
